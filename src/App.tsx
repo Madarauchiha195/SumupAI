@@ -477,7 +477,7 @@ function App() {
               >
                 <Menu className="w-6 h-6" />
               </button>
-              <h1 className="text-lg sm:text-2xl font-bold">SumUpAI</h1>
+              <h1 className="text-lg sm:text-2xl font-bold">SumUpAI-purnank</h1>
             </div>
             
             <div className="flex items-center gap-1 sm:gap-4">
