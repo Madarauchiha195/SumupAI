@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { jwtDecode, JwtPayload } from 'jwt-decode';
+
+interface ExtendedJwtPayload extends JwtPayload {
+  email: string;
+  picture?: string;
+  sub: string;
+}
 import { 
   Sun, Moon, Upload, Send, Image, Video, Loader2, Menu, Search, 
   LogOut, Settings, HelpCircle, PlusCircle, ChevronRight, ChevronLeft,
@@ -194,6 +201,34 @@ function App() {
     };
   }, [isInputExpanded]);
 
+  // Add this useEffect near your other effects
+  useEffect(() => {
+    // Check for stored auth token
+    const storedToken = localStorage.getItem('authToken');
+    if (storedToken) {
+      try {
+        const decoded = jwtDecode<ExtendedJwtPayload>(storedToken);
+        // Check if token is not expired
+        if (decoded.exp && decoded.exp * 1000 > Date.now()) {
+          setUser({
+            id: decoded.sub,
+            email: decoded.email,
+            username: decoded.email.split('@')[0],
+            profilePic: decoded.picture,
+            createdAt: new Date()
+          });
+          setIsAuthenticated(true);
+        } else {
+          // Token expired, remove it
+          localStorage.removeItem('authToken');
+        }
+      } catch (error) {
+        console.error('Error parsing stored token:', error);
+        localStorage.removeItem('authToken');
+      }
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -242,10 +277,38 @@ function App() {
     setIsInputExpanded(false); // Collapse input form after submit
   };
 
-  const handleGoogleSuccess = (credentialResponse: any) => {
-    console.log('Google login success:', credentialResponse);
-    setIsAuthenticated(true);
-    setShowAuthModal(false);
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      if (!credentialResponse.credential) {
+        throw new Error('No credentials received');
+      }
+  
+      const decoded = jwtDecode<ExtendedJwtPayload>(credentialResponse.credential);
+      
+      if (!decoded.email) {
+        throw new Error('No email found in token');
+      }
+  
+      // Set authenticated user state
+      setUser({
+        id: decoded.sub,
+        email: decoded.email,
+        username: decoded.email.split('@')[0],
+        profilePic: decoded.picture,
+        createdAt: new Date()
+      });
+  
+      setIsAuthenticated(true);
+      setShowAuthModal(false);
+      setError('');
+  
+      // Optional: Store auth token in localStorage
+      localStorage.setItem('authToken', credentialResponse.credential);
+  
+    } catch (error) {
+      console.error('Google login error:', error);
+      setError('Failed to process Google login. Please try again.');
+    }
   };
 
   const handleGoogleError = () => {
@@ -860,6 +923,36 @@ function App() {
               )}
 
               <div className="space-y-4">
+                <div className="w-full flex justify-center">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    useOneTap
+                    theme={darkMode ? 'filled_black' : 'outline'}
+                    shape="pill"
+                    size="large"
+                    text="continue_with"
+                    width="100%"
+                  />
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className={clsx(
+                      "w-full border-t",
+                      darkMode ? "border-gray-700" : "border-gray-200"
+                    )} />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className={clsx(
+                      "px-2",
+                      darkMode ? "bg-gray-800 text-gray-400" : "bg-white text-gray-500"
+                    )}>
+                      Or continue with email
+                    </span>
+                  </div>
+                </div>
+
                 <div>
                   <label className={clsx(
                     "block text-sm font-medium mb-1",
@@ -882,48 +975,19 @@ function App() {
                         : "bg-gray-100 focus:bg-gray-50 text-gray-900"
                     )}
                   />
-                  {email && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Your username will be: @{email.split('@')[0]}
-                    </p>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (!email.trim()) {
+                        setError('Please enter your email');
+                        return;
+                      }
+                      // Handle email sign in
+                    }}
+                    className="mt-2 w-full p-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    Continue with Email
+                  </button>
                 </div>
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className={clsx(
-                      "w-full border-t",
-                      darkMode ? "border-gray-700" : "border-gray-200"
-                    )} />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className={clsx(
-                      "px-2",
-                      darkMode ? "bg-gray-800 text-gray-400" : "bg-white text-gray-500"
-                    )}>
-                      Or continue with
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (!email.trim()) {
-                      setError('Please enter your email first');
-                      return;
-                    }
-                    // Handle Google sign in with email
-                  }}
-                  className={clsx(
-                    "w-full p-3 rounded-lg flex items-center justify-center gap-2 transition-colors",
-                    darkMode 
-                      ? "bg-gray-700 hover:bg-gray-600" 
-                      : "bg-gray-100 hover:bg-gray-200"
-                  )}
-                >
-                  <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                  <span>Continue with Google</span>
-                </button>
 
                 <p className={clsx(
                   "text-xs text-center",
