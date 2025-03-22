@@ -10,11 +10,64 @@ interface ExtendedJwtPayload extends JwtPayload {
 import { 
   Sun, Moon, Upload, Send, Image, Video, Loader2, Menu, Search, 
   LogOut, Settings, HelpCircle, PlusCircle, ChevronRight, ChevronLeft,
-  Crown, MessageSquare, User
+  Crown, MessageSquare, User, ChevronDown, FileText, Music, Fingerprint,
+  ArrowRight // Add this
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { BackgroundLines } from './components/BackgroundLines';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ConvertIcon } from './components/ConvertIcon';
+
+// Add this type definition
+type ConverterContent = {
+  id: ConverterType;
+  icon: any;
+  title: string;
+  tagline: string;
+  description: string;
+  placeholder: string;
+  cost: number;
+};
+
+// Add this constant
+const CONVERTER_CONTENT: ConverterContent[] = [
+  {
+    id: 'text-to-image',
+    icon: Image,
+    title: 'Text to Image',
+    tagline: 'Welcome to the world of visual storytelling!',
+    description: 'Turn your text into vibrant, AI-crafted images that bring your imagination to life.',
+    placeholder: 'Describe the image you want to create...',
+    cost: 10
+  },
+  {
+    id: 'text-to-video',
+    icon: Video,
+    title: 'Text to Video',
+    tagline: 'Experience your words in motion!',
+    description: 'Transform simple text into captivating, dynamic videos with ease.',
+    placeholder: 'Describe the video you want to create...',
+    cost: 20
+  },
+  {
+    id: 'text-to-audio',
+    icon: Music,
+    title: 'Text to Audio',
+    tagline: 'Hear your ideas come alive!',
+    description: 'Convert your text into soothing audio or expressive narrations instantly.',
+    placeholder: 'Write the text you want to convert to audio...',
+    cost: 15
+  },
+  {
+    id: 'text-to-sign',
+    icon: Fingerprint,
+    title: 'Text to Sign Language',
+    tagline: 'Bridging gaps through innovation!',
+    description: 'Translate your text into seamless sign language for inclusive communication.',
+    placeholder: 'Enter the text you want to translate to sign language...',
+    cost: 25
+  }
+];
 
 type Message = {
   id: string;
@@ -45,6 +98,42 @@ type User = {
   profilePic?: string;
   createdAt: Date;
 };
+
+type ConverterType = 'text-to-image' | 'text-to-video' | 'text-to-audio' | 'text-to-sign';
+
+// Add this type near your other interfaces
+type ProfileTooltipProps = {
+  username: string;
+  credits: number;
+  darkMode: boolean;
+};
+
+// Update the ProfileTooltip component and its container
+const ProfileTooltip: React.FC<ProfileTooltipProps> = ({ username, credits, darkMode }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 5, scale: 0.95 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: 5, scale: 0.95 }}
+    className={clsx(
+      'absolute mt-2 p-3 rounded-lg shadow-lg backdrop-blur-sm',
+      'w-40 border transform-gpu',
+      '-left-14', // Center align by offsetting left
+      darkMode 
+        ? 'bg-gray-800/90 border-gray-700' 
+        : 'bg-white/90 border-gray-200'
+    )}
+  >
+    <div className="space-y-2">
+      <p className="font-medium text-base">{username}</p>
+      <p className={clsx(
+        'text-sm',
+        darkMode ? 'text-gray-400' : 'text-gray-600'
+      )}>
+        credits {credits}
+      </p>
+    </div>
+  </motion.div>
+);
 
 // First, update the initial dummy chats with more content
 const initialDummyChats: Chat[] = [
@@ -118,6 +207,13 @@ function App() {
   const [isNewUser, setIsNewUser] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [showConverter, setShowConverter] = useState(false);
+  const [activeConverter, setActiveConverter] = useState<ConverterType | null>(null);
+  const converterRef = useRef<HTMLDivElement>(null);
+
+  // Add this state near your other states
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
 
   useEffect(() => {
     const filtered = dummyChats.filter(chat => 
@@ -229,53 +325,75 @@ function App() {
     }
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-
-    // Include selected options in the message
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      type: 'text',
-      content: input,
-      options: {
-        format: outputFormat,
-        summaryType,
-        theme,
-        audioVoice,
-        language,
-        audience // Add this line
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (converterRef.current && !converterRef.current.contains(event.target as Node)) {
+        setShowConverter(false);
       }
-    };
+    }
 
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
-    
-    const newChat: Chat = {
-      id: Date.now().toString(),
-      title: input.slice(0, 30) + (input.length > 30 ? '...' : ''), 
-      preview: input,
-      date: new Date().toLocaleTimeString()
-    };
-    
-    setDummyChats(prev => [newChat, ...prev]);
-    setActiveChat(newChat.id);
-    localStorage.setItem(`chat_${newChat.id}`, JSON.stringify(updatedMessages));
-    setInput('');
-    
-    setIsGenerating(true);
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        type: Math.random() > 0.5 ? 'image' : 'video',
-        content: 'https://images.unsplash.com/photo-1682687220742-aba19b51f9a8',
-      };
-      setMessages(prev => [...prev, aiResponse]);
-      setIsGenerating(false);
-    }, 2000);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-    setIsInputExpanded(false); // Collapse input form after submit
+  // Add this useEffect near your other effects
+  useEffect(() => {
+    // Reset to home interface on first load
+    handleNewChat();
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Update the handleSubmit function to handle different converter types
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!input.trim()) return;
+
+  // Get current converter cost if active
+  const currentConverter = CONVERTER_CONTENT.find(c => c.id === activeConverter);
+  const cost = currentConverter?.cost || 0;
+
+  // Include selected options in the message
+  const newMessage: Message = {
+    id: Date.now().toString(),
+    type: activeConverter ? activeConverter.split('-')[2] as 'text' | 'image' | 'video' : 'text',
+    content: input,
+    options: {
+      format: outputFormat,
+      summaryType,
+      theme,
+      audioVoice,
+      language,
+      audience
+    }
   };
+
+  const updatedMessages = [...messages, newMessage];
+  setMessages(updatedMessages);
+  
+  const newChat: Chat = {
+    id: Date.now().toString(),
+    title: currentConverter ? `${currentConverter.title}: ${input.slice(0, 20)}...` : input.slice(0, 30) + (input.length > 30 ? '...' : ''),
+    preview: input,
+    date: new Date().toLocaleTimeString()
+  };
+  
+  setDummyChats(prev => [newChat, ...prev]);
+  setActiveChat(newChat.id);
+  localStorage.setItem(`chat_${newChat.id}`, JSON.stringify(updatedMessages));
+  setInput('');
+  
+  setIsGenerating(true);
+  setTimeout(() => {
+    const aiResponse: Message = {
+      id: (Date.now() + 1).toString(),
+      type: currentConverter ? currentConverter.id.split('-')[2] as 'image' | 'video' : 'text',
+      content: 'https://images.unsplash.com/photo-1682687220742-aba19b51f9a8',
+    };
+    setMessages(prev => [...prev, aiResponse]);
+    setIsGenerating(false);
+  }, 2000);
+
+  setIsInputExpanded(false);
+};
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
@@ -320,12 +438,14 @@ function App() {
     setMessages([]);
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-    setInput('');
-    setIsSidebarOpen(false);
-    setIsInputExpanded(false); // Reset input form state
-  };
+  // Update the handleNewChat function
+const handleNewChat = () => {
+  setMessages([]);
+  setInput('');
+  setIsSidebarOpen(false);
+  setIsInputExpanded(false);
+  setActiveConverter(null); // Reset active converter
+};
 
   const handleSidebarHover = () => {
     if (!isSidebarOpen) {
@@ -566,26 +686,221 @@ function App() {
                   <button
                     onClick={() => setDarkMode(!darkMode)}
                     className={clsx(
-                      'p-1.5 sm:p-2 rounded-full',
-                      darkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-200/50'
+                      'p-2.5 rounded-full transition-colors', // Increased padding from p-2 to p-2.5
+                      darkMode 
+                        ? 'hover:bg-gray-800/80' 
+                        : 'hover:bg-gray-200/80'
                     )}
                   >
-                    {darkMode ? <Sun className="w-5 h-5 sm:w-6 sm:h-6" /> : <Moon className="w-5 h-5 sm:w-6 sm:h-6" />}
+                    {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />} {/* Increased from w-5 h-5 to w-6 h-6 */}
                   </button>
                 </>
               ) : (
                 <>
-                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <User className="w-6 h-6" />
-                  </button>
+                  {/* Update the converter button content */}
+                  <div className="relative" ref={converterRef}>
+                    {/* Mobile version (circular icon only) */}
+                    <button
+                      onClick={() => setShowConverter(!showConverter)}
+                      className={clsx(
+                        'md:hidden w-10 h-10 rounded-full transition-all duration-300 relative group',
+                        'overflow-hidden'
+                      )}
+                    >
+                      <div className="absolute inset-0 rounded-full">
+                        <div className={clsx(
+                          "absolute inset-[0.5px] rounded-full",
+                          "transition-all duration-300",
+                          showConverter 
+                            ? "bg-gradient-to-r from-blue-500 to-purple-500" 
+                            : "bg-gradient-to-r from-blue-500 to-purple-500 after:absolute after:inset-[1px] after:rounded-full",
+                          darkMode 
+                            ? "after:bg-gray-900" 
+                            : "after:bg-white"
+                        )} />
+                      </div>
+                      <div className="relative z-10 flex items-center justify-center h-full">
+                        <ConvertIcon className="w-5 h-5" />
+                      </div>
+                    </button>
+
+                    {/* Desktop version (full button with text) */}
+                    <button
+                      onClick={() => setShowConverter(!showConverter)}
+                      className={clsx(
+                        'hidden md:flex px-4 py-2 rounded-full transition-all duration-300 relative group',
+                        'overflow-hidden'
+                      )}
+                    >
+                      <div className="absolute inset-0 rounded-full">
+                        <div className={clsx(
+                          "absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-purple-500",
+                          "after:absolute after:inset-[1px] after:rounded-full",
+                          darkMode ? "after:bg-gray-900" : "after:bg-white",
+                          "group-hover:after:opacity-0",
+                          "transition-all duration-300"
+                        )} />
+                      </div>
+                      <div className={clsx(
+                        'relative z-10 flex items-center gap-2 px-3 py-1.5',
+                        'rounded-full transition-colors duration-300',
+                        'group-hover:text-white'
+                      )}>
+                        <span className="text-base font-medium">Convert</span>
+                        <ConvertIcon className="w-5 h-5 ml-1" />
+                        <ChevronDown className={clsx(
+                          "w-4 h-4 transition-transform duration-300",
+                          showConverter ? "rotate-180" : "rotate-0"
+                        )} />
+                      </div>
+                    </button>
+
+                    {/* Dropdown menu - adjust width for mobile */}
+                    {showConverter && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          className={clsx(
+                            'absolute right-0 mt-2 overflow-hidden shadow-lg rounded-xl',
+                            'w-40 md:w-48', // Smaller width on mobile
+                            darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200',
+                            'backdrop-blur-lg'
+                          )}
+                        >
+                          <div className="py-1 md:py-2">
+                            {[
+                              { id: 'text-to-image', icon: Image, label: 'Text to Image' },
+                              { id: 'text-to-video', icon: Video, label: 'Text to Video' },
+                              { id: 'text-to-audio', icon: Music, label: 'Text to Audio' },
+                              { id: 'text-to-sign', icon: Fingerprint, label: 'Text to Sign' },
+                            ].map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setActiveConverter(item.id as ConverterType);
+                                  setShowConverter(false);
+                                  setMessages([]); // Clear messages when switching to converter
+                                  setInput(''); // Clear input
+                                }}
+                                className={clsx(
+                                  'w-full px-3 md:px-4 py-1.5 md:py-2 text-left flex items-center gap-2 md:gap-3 transition-colors',
+                                  darkMode 
+                                    ? 'hover:bg-gray-700/50 text-gray-200' 
+                                    : 'hover:bg-gray-100/50 text-gray-700',
+                                  activeConverter === item.id && 'bg-blue-500/10 text-blue-500'
+                                )}
+                              >
+                                <item.icon className="w-4 h-4 md:w-5 md:h-5" />
+                                <span className="text-sm font-medium">{item.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
+                  </div>
+                
+                  <div className="relative group">
+                    <button 
+                      onClick={() => setShowProfileDialog(true)} // Add this onClick handler
+                      className={clsx(
+                        'p-2.5 rounded-full transition-colors',
+                        darkMode 
+                          ? 'hover:bg-gray-700' 
+                          : 'hover:bg-gray-200/80'
+                      )}
+                    >
+                      <User className="w-7 h-7" />
+                    </button>
+
+                    {/* Replace the tooltip with dialog */}
+                    {showProfileDialog && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center">
+                        <div 
+                          className="absolute inset-0 bg-black/50 backdrop-blur-sm" 
+                          onClick={() => setShowProfileDialog(false)} 
+                        />
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className={clsx(
+                            'relative w-full max-w-md mx-4 p-6 rounded-xl shadow-xl',
+                            darkMode ? 'bg-gray-800' : 'bg-white'
+                          )}
+                        >
+                          {/* Dialog Content */}
+                          <div className="space-y-6">
+                            <div className="text-center">
+                              <h2 className="text-2xl font-bold mb-2">Profile</h2>
+                              <p className={clsx(
+                                'text-sm',
+                                darkMode ? 'text-gray-400' : 'text-gray-600'
+                              )}>
+                                Manage your account and credits
+                              </p>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-sm text-gray-500">Username</label>
+                                <p className="text-lg font-medium">{user?.email.split('@')[0] || 'User'}</p>
+                              </div>
+                              <div>
+                                <label className="text-sm text-gray-500">Email</label>
+                                <p className="text-lg font-medium">{user?.email}</p>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <label className="text-sm text-gray-500">Credits</label>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-lg font-medium">100</p>
+                                    <span className="flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  className={clsx(
+                                    'flex items-center gap-2 px-4 py-2 rounded-full',
+                                    'text-sm font-medium transition-colors',
+                                    darkMode 
+                                      ? 'bg-gray-700 hover:bg-gray-600' 
+                                      : 'bg-gray-100 hover:bg-gray-200'
+                                  )}
+                                >
+                                  <Crown className="w-4 h-4" />
+                                  Upgrade to Pro
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Credit History */}
+                            <div>
+                              <h3 className="text-lg font-medium mb-3">Credit History</h3>
+                              <div className="space-y-2 max-h-60 overflow-y-auto">
+                                {/* Add your credit history items here */}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => setDarkMode(!darkMode)}
                     className={clsx(
-                      'p-2 rounded-full',
-                      darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                      'p-2.5 rounded-full transition-colors', // Increased padding from p-2 to p-2.5
+                      darkMode 
+                        ? 'hover:bg-gray-800/80' 
+                        : 'hover:bg-gray-200/80'
                     )}
                   >
-                    {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
+                    {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />} {/* Increased from w-5 h-5 to w-6 h-6 */}
                   </button>
                 </>
               )}
@@ -598,66 +913,178 @@ function App() {
           ref={messagesContainerRef}
           className={clsx(
             'relative z-0',
-            messages.length === 0 && !isInputExpanded // Hide welcome message when input is expanded
+            messages.length === 0 && !isInputExpanded
               ? 'h-screen flex items-center justify-center'
-              : 'max-w-6xl mx-auto px-4 mt-24 mb-32 h-[calc(100vh-14rem)] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-400/20 hover:scrollbar-thumb-gray-400/40'
+              : 'max-w-6xl mx-auto px-4 mt-24 mb-32 h-[calc(100vh-14rem)]'
           )}
         >
-          {messages.length === 0 && !isInputExpanded ? ( // Only show welcome when no messages and input not expanded
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="text-center space-y-6 max-w-3xl px-4 -mt-20"
-            >
-              <h1 className={clsx(
-                "text-5xl font-bold", // Changed back to original size
-                darkMode ? "text-white" : "text-gray-900"
-              )}>
-                Bring Your <span className="bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">Imagination</span> to Life with AI!
-              </h1>
-              <p className={clsx(
-                "text-xl max-w-xl mx-auto", // Changed back to original size
-                darkMode ? "text-gray-300" : "text-gray-700"
-              )}>
-                Transform any text, passage, Word document, or PDF into stunning images and videos effortlessly.
-              </p>
-              <p className={clsx(
-                "text-lg max-w-lg mx-auto", // Changed back to original size
-                darkMode ? "text-gray-400" : "text-gray-600"
-              )}>
-                Discover the power of AI-driven creativity at your fingertips.
-              </p>
-            </motion.div>
-          ) : (
-            <div className="space-y-4 pb-8"> {/* Added bottom padding and reduced spacing */}
-              {messages.map((message, index) => (
-                <div
-                  key={message.id}
-                  ref={index === messages.length - 1 ? latestMessageRef : null}
-                  className={clsx(
-                    'flex flex-col gap-3 p-3 rounded-lg max-w-2xl mx-auto transition-all duration-500',
-                    darkMode 
-                      ? 'bg-gray-800/90 backdrop-blur-sm' 
-                      : 'bg-gray-50 backdrop-blur-sm shadow-md', // Changed from bg-white/90
-                    message.loading && 'animate-pulse'
-                  )}
-                >
-                  {message.type === 'text' ? (
-                    <p className="text-base">{message.content}</p> // Keeping the reduced size
-                  ) : (
-                    <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200">
-                      <img
-                        src={message.content}
-                        alt="AI Generated"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full"
+          >
+            {messages.length === 0 && !isInputExpanded && !activeConverter ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center space-y-8 max-w-4xl mx-auto"
+              >
+                <h1 className="text-5xl font-bold mb-6 leading-tight">
+                  Bring Your{' '}
+                  <span className="inline-block animate-gradient bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                    Imagination
+                  </span>{' '}
+                  to Life with{' '}
+                  <span className="inline-block animate-gradient bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 bg-clip-text text-transparent">
+                    AI
+                  </span>!
+                </h1>
+                <p className={clsx(
+                  "text-xl font-medium leading-relaxed max-w-2xl mx-auto", // Added max-w-2xl for smaller width
+                  darkMode ? "text-gray-300" : "text-gray-700"
+                )}>
+                  Transform any{' '}
+                  <span className="text-blue-500">text</span>,{' '}
+                  <span className="text-purple-500">passage</span>,{' '}
+                  <span className="text-pink-500">Word document</span>, or{' '}
+                  <span className="text-blue-500">PDF</span>{' '}
+                  into stunning images and videos effortlessly.
+                </p>
+                <p className={clsx(
+                  "text-lg max-w-xl mx-auto", // Added max-w-xl for even smaller width
+                  darkMode ? "text-gray-400" : "text-gray-600"
+                )}>
+                  Discover the power of{' '}
+                  <span className="font-semibold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+                    AI-driven creativity
+                  </span>{' '}
+                  at your fingertips.
+                </p>
+              </motion.div>
+            ) : activeConverter ? (
+              // Show converter welcome message when converter is active
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="text-center space-y-8 max-w-3xl mx-auto mb-12" // Increased space-y-6 to space-y-8
+              >
+                {CONVERTER_CONTENT.map((content) => (
+                  content.id === activeConverter && (
+                    <React.Fragment key={content.id}>
+                      <div className="flex items-center justify-center gap-3 mb-6"> {/* Increased from mb-4 */}
+                        <content.icon className="w-10 h-10" />
+                        <h1 className={clsx(
+                          "text-4xl font-bold leading-relaxed", // Added leading-relaxed
+                          darkMode ? "text-white" : "text-gray-900"
+                        )}>
+                          Text to{' '}
+                          <span className="inline-block animate-gradient bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                            {content.id === 'text-to-image' && 'Image'}
+                            {content.id === 'text-to-video' && 'Video'}
+                            {content.id === 'text-to-audio' && 'Audio'}
+                            {content.id === 'text-to-sign' && 'Sign Language'}
+                          </span>
+                        </h1>
+                      </div>
+                      <h2 className="text-2xl font-semibold mb-6 leading-relaxed"> {/* Added leading-relaxed and increased mb-4 to mb-6 */}
+                        {content.id === 'text-to-image' && (
+                          <>Welcome to the world of <span className="text-blue-500">visual storytelling</span>!</>
+                        )}
+                        {content.id === 'text-to-video' && (
+                          <>Experience your words in <span className="text-purple-500">motion</span>!</>
+                        )}
+                        {content.id === 'text-to-audio' && (
+                          <>Hear your <span className="text-pink-500">ideas</span> come alive!</>
+                        )}
+                        {content.id === 'text-to-sign' && (
+                          <>Bridging gaps through <span className="text-blue-500">innovation</span>!</>
+                        )}
+                      </h2>
+                      <p className={clsx(
+                        "text-xl max-w-xl mx-auto leading-loose", // Changed from leading-relaxed to leading-loose
+                        darkMode ? "text-gray-300" : "text-gray-700"
+                      )}>
+                        {content.id === 'text-to-image' && (
+                          <>Transform your text into <span className="text-blue-500">vibrant</span>, <span className="text-purple-500">AI-crafted</span> images that bring your <span className="text-pink-500">imagination</span> to life.</>
+                        )}
+                        {content.id === 'text-to-video' && (
+                          <>Transform simple text into <span className="text-blue-500">captivating</span>, <span className="text-purple-500">dynamic</span> videos with <span className="text-pink-500">ease</span>.</>
+                        )}
+                        {content.id === 'text-to-audio' && (
+                          <>Convert your text into <span className="text-blue-500">soothing</span> audio or <span className="text-purple-500">expressive</span> narrations <span className="text-pink-500">instantly</span>.</>
+                        )}
+                        {content.id === 'text-to-sign' && (
+                          <>Translate your text into <span className="text-blue-500">seamless</span> sign language for <span className="text-purple-500">inclusive</span> <span className="text-pink-500">communication</span>.</>
+                        )}
+                      </p>
+                    </React.Fragment>
+                  )
+                ))}
+              </motion.div>
+            ) : (
+              // Show normal chat messages when no converter is active
+              <div className="space-y-6">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    ref={messages[messages.length - 1].id === message.id ? latestMessageRef : null}
+                    className={clsx(
+                      'flex flex-col gap-2',
+                      message.loading && 'animate-pulse'
+                    )}
+                  >
+                    {message.type === 'text' && (
+                      <div className={clsx(
+                        'p-4 rounded-xl max-w-prose',
+                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
+                        'backdrop-blur-sm'
+                      )}>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                      </div>
+                    )}
+                    {message.type === 'image' && (
+                      <div className={clsx(
+                        'rounded-xl overflow-hidden max-w-lg',
+                        'backdrop-blur-sm'
+                      )}>
+                        <img 
+                          src={message.content} 
+                          alt="Generated" 
+                          className="w-full h-auto"
+                        />
+                      </div>
+                    )}
+                    {message.type === 'video' && (
+                      <div className={clsx(
+                        'rounded-xl overflow-hidden max-w-lg',
+                        'backdrop-blur-sm'
+                      )}>
+                        <video 
+                          src={message.content}
+                          controls
+                          className="w-full h-auto"
+                        />
+                      </div>
+                    )}
+                    {message.type === 'audio' && (
+                      <div className={clsx(
+                        'rounded-xl overflow-hidden max-w-lg',
+                        'backdrop-blur-sm p-4',
+                        darkMode ? 'bg-gray-800/50' : 'bg-white/50'
+                      )}>
+                        <audio 
+                          src={message.content}
+                          controls
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
         </main>
 
         {/* Input Form */}
@@ -680,29 +1107,6 @@ function App() {
               <div className="space-y-6 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Input Format</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['Text', 'PDF', 'Word', 'URL'].map(format => (
-                        <button
-                          key={format}
-                          type="button"
-                          onClick={() => setOutputFormat(format.toLowerCase())}
-                          className={clsx(
-                            'px-3 py-1 rounded-full text-sm',
-                            outputFormat === format.toLowerCase()
-                              ? 'bg-blue-500 text-white'
-                              : darkMode 
-                                ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700' // Added text color
-                          )}
-                        >
-                          {format}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
                     <label className="text-sm font-medium">Summary Type</label>
                     <div className="flex flex-wrap gap-2">
                       {['Brief', 'Detailed', 'Deep Dive'].map(type => (
@@ -716,7 +1120,7 @@ function App() {
                               ? 'bg-blue-500 text-white'
                               : darkMode 
                                 ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700' // Added text color
+                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                           )}
                         >
                           {type}
@@ -739,54 +1143,12 @@ function App() {
                               ? 'bg-blue-500 text-white'
                               : darkMode 
                                 ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700' // Added text color
+                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                           )}
                         >
                           {t}
                         </button>
                       ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Voice & Language</label>
-                    <div className="flex flex-wrap gap-2">
-                      <select
-                        value={audioVoice}
-                        onChange={(e) => setAudioVoice(e.target.value)}
-                        className={clsx(
-                          'px-3 pr-8 py-1 rounded-full text-sm appearance-none', // Added pr-8 and appearance-none
-                          darkMode 
-                            ? 'bg-gray-700' 
-                            : 'bg-gray-200 text-gray-700' // Added text color
-                        )}
-                        style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
-                          backgroundPosition: 'right 0.5rem center',
-                          backgroundRepeat: 'no-repeat',
-                          backgroundSize: '1.5em 1.5em'
-                        }}
-                      >
-                        <option value="male">Male Voice</option>
-                        <option value="female">Female Voice</option>
-                      </select>
-                      <select
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                        className={clsx(
-                          'px-3 pr-8 py-1 rounded-full text-sm appearance-none', // Added pr-8 and appearance-none
-                          darkMode 
-                            ? 'bg-gray-700' 
-                            : 'bg-gray-200 text-gray-700' // Added text color
-                        )}
-                        style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
-                          backgroundPosition: 'right 0.5rem center',
-                          backgroundRepeat: 'no-repeat',
-                          backgroundSize: '1.5em 1.5em'
-                        }}
-                      >
-                        <option value="english">English</option>
-                        <option value="spanish">Hindi</option>
-                      </select>
                     </div>
                   </div>
 
@@ -886,6 +1248,11 @@ function App() {
               >
                 {isGenerating ? (
                   <Loader2 className="w-6 h-6 animate-spin" />
+                ) : activeConverter ? (
+                  <div className="flex items-center gap-2 px-3">
+                    <span className="text-sm">Generate</span>
+                    <span className="text-xs opacity-75">({CONVERTER_CONTENT.find(c => c.id === activeConverter)?.cost} credits)</span>
+                  </div>
                 ) : (
                   <Send className="w-6 h-6" />
                 )}
