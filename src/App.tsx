@@ -117,19 +117,19 @@ const ProfileTooltip: React.FC<ProfileTooltipProps> = ({ username, credits, dark
     className={clsx(
       'absolute mt-2 p-3 rounded-lg shadow-lg backdrop-blur-sm',
       'w-40 border transform-gpu',
-      '-left-14', // Center align by offsetting left
+      'right-0', // Changed from -left-14 to right-0
       darkMode 
         ? 'bg-gray-800/90 border-gray-700' 
         : 'bg-white/90 border-gray-200'
     )}
   >
     <div className="space-y-2">
-      <p className="font-medium text-base">{username}</p>
+      <p className="font-medium text-base">{username || 'User'}</p>
       <p className={clsx(
         'text-sm',
         darkMode ? 'text-gray-400' : 'text-gray-600'
       )}>
-        credits {credits}
+        {credits} credits
       </p>
     </div>
   </motion.div>
@@ -214,6 +214,15 @@ function App() {
 
   // Add this state near your other states
   const [showProfileDialog, setShowProfileDialog] = useState(false);
+
+  // Add these types and states near your existing Google OAuth states
+  type LocalUser = {
+    email: string;
+    createdAt: string;
+  };
+  
+  const [authEmail, setAuthEmail] = useState('');
+  const [localUser, setLocalUser] = useState<LocalUser | null>(null);
 
   useEffect(() => {
     const filtered = dummyChats.filter(chat => 
@@ -342,6 +351,15 @@ function App() {
     handleNewChat();
   }, []); // Empty dependency array means this runs once on mount
 
+  // Add this effect to check local auth status
+  useEffect(() => {
+    const savedUser = localStorage.getItem('localUser');
+    if (savedUser) {
+      setLocalUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   // Update the handleSubmit function to handle different converter types
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -434,8 +452,37 @@ const handleSubmit = async (e: React.FormEvent) => {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('localUser');
+    setLocalUser(null);
     setIsAuthenticated(false);
     setMessages([]);
+  };
+
+  // Add local auth functions
+  const handleEmailLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail) return;
+  
+    // Create user object similar to Google OAuth format
+    const user = {
+      id: Date.now().toString(),
+      email: authEmail,
+      username: authEmail.split('@')[0], // Extract username from email
+      createdAt: new Date()
+    };
+  
+    const localUser: LocalUser = {
+      email: authEmail,
+      createdAt: new Date().toISOString()
+    };
+  
+    // Store both user and localUser data
+    localStorage.setItem('localUser', JSON.stringify(localUser));
+    setLocalUser(localUser);
+    setUser(user); // Set user state for profile display
+    setIsAuthenticated(true);
+    setShowAuthModal(false);
+    setAuthEmail('');
   };
 
   // Update the handleNewChat function
@@ -890,6 +937,35 @@ const handleNewChat = () => {
                         </motion.div>
                       </div>
                     )}
+                    {/* Show tooltip only on hover and when dialog is not open */}
+                    <AnimatePresence>
+                      {!showProfileDialog && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 5 }}
+                          className={clsx(
+                            'absolute right-0 mt-2 p-3 rounded-lg shadow-lg backdrop-blur-sm',
+                            'w-40 border transform-gpu hidden group-hover:block', // Show on group hover
+                            darkMode 
+                              ? 'bg-gray-800/90 border-gray-700' 
+                              : 'bg-white/90 border-gray-200'
+                          )}
+                        >
+                          <div className="space-y-2">
+                            <p className="font-medium text-base">
+                              {localUser?.email?.split('@')[0] || user?.email?.split('@')[0] || 'User'}
+                            </p>
+                            <p className={clsx(
+                              'text-sm',
+                              darkMode ? 'text-gray-400' : 'text-gray-600'
+                            )}>
+                               Credits 100
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                   <button
                     onClick={() => setDarkMode(!darkMode)}
@@ -1329,9 +1405,9 @@ const handleNewChat = () => {
                   </label>
                   <input
                     type="email"
-                    value={email}
+                    value={authEmail} // Changed from email to authEmail
                     onChange={(e) => {
-                      setEmail(e.target.value);
+                      setAuthEmail(e.target.value); // Changed from setEmail to setAuthEmail
                       setError('');
                     }}
                     placeholder="Enter your email"
@@ -1343,12 +1419,13 @@ const handleNewChat = () => {
                     )}
                   />
                   <button
-                    onClick={() => {
-                      if (!email.trim()) {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (!authEmail.trim()) {
                         setError('Please enter your email');
                         return;
                       }
-                      // Handle email sign in
+                      handleEmailLogin(e as any);
                     }}
                     className="mt-2 w-full p-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
                   >
