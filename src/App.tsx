@@ -1016,18 +1016,17 @@ const handleNewChat = () => {
                   </span>!
                 </h1>
                 <p className={clsx(
-                  "text-xl font-medium leading-relaxed max-w-2xl mx-auto", // Added max-w-2xl for smaller width
+                  "text-base sm:text-xl font-medium leading-relaxed max-w-[320px] sm:max-w-2xl mx-auto", // Increased mobile max-width
                   darkMode ? "text-gray-300" : "text-gray-700"
                 )}>
-                  Transform any{' '}
+                  Transform{' '}
                   <span className="text-blue-500">text</span>,{' '}
-                  <span className="text-purple-500">passage</span>,{' '}
-                  <span className="text-pink-500">Word document</span>, or{' '}
-                  <span className="text-blue-500">PDF</span>{' '}
-                  into stunning images and videos effortlessly.
+                  <span className="text-purple-500">docs</span>, or{' '} {/* Shortened words */}
+                  <span className="text-blue-500">PDFs</span>{' '}
+                  into stunning <span className="text-pink-500">images & videos</span> effortlessly.
                 </p>
                 <p className={clsx(
-                  "text-lg max-w-xl mx-auto", // Added max-w-xl for even smaller width
+                  "text-sm sm:text-lg max-w-[240px] sm:max-w-xl mx-auto", // Added mobile-first sizing
                   darkMode ? "text-gray-400" : "text-gray-600"
                 )}>
                   Discover the power of{' '}
@@ -1325,9 +1324,12 @@ const handleNewChat = () => {
                 {isGenerating ? (
                   <Loader2 className="w-6 h-6 animate-spin" />
                 ) : activeConverter ? (
-                  <div className="flex items-center gap-2 px-3">
-                    <span className="text-sm">Generate</span>
-                    <span className="text-xs opacity-75">({CONVERTER_CONTENT.find(c => c.id === activeConverter)?.cost} credits)</span>
+                  <div className="flex items-center gap-1">
+                    <Send className="w-5 h-5 md:hidden" /> {/* Show icon on mobile */}
+                    <span className="hidden md:inline text-sm">Generate</span> {/* Hide on mobile */}
+                    <span className="text-xs opacity-75">
+                      ({CONVERTER_CONTENT.find(c => c.id === activeConverter)?.cost}Cr)
+                    </span>
                   </div>
                 ) : (
                   <Send className="w-6 h-6" />
