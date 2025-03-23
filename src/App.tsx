@@ -501,7 +501,7 @@ const handleNewChat = () => {
   };
 
   return (
-    <GoogleOAuthProvider clientId="191171141553-mnc7esgj8d0d2nbs9qt4qut06vp0cgnm.apps.googleusercontent.com">
+    <GoogleOAuthProvider clientId="247207666938-t9jlruf9e05isbv5rc1se511o6oat46c.apps.googleusercontent.com">
       <div className={clsx(
         'min-h-screen transition-colors duration-200 relative overflow-hidden', // Added overflow-hidden
         darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900' // Changed from bg-gray-50
