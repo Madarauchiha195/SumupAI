@@ -71,7 +71,7 @@ const CONVERTER_CONTENT: ConverterContent[] = [
 
 type Message = {
   id: string;
-  type: 'text' | 'image' | 'video';
+  type: 'text' | 'image' | 'video' | 'audio';
   content: string;
   loading?: boolean;
   options?: {
