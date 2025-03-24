@@ -108,6 +108,12 @@ type ProfileTooltipProps = {
   darkMode: boolean;
 };
 
+// Add these new types at the top of your file
+type LoadingState = {
+  id: string;
+  type: 'text' | 'image' | 'video' | 'audio' | 'sign';
+};
+
 // Update the ProfileTooltip component and its container
 const ProfileTooltip: React.FC<ProfileTooltipProps> = ({ username, credits, darkMode }) => (
   <motion.div
@@ -169,9 +175,17 @@ function App() {
     return savedMode ? JSON.parse(savedMode) : true; // Default to true for dark mode
   });
   
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => localStorage.getItem('currentInput') || '');
+  const [converterInput, setConverterInput] = useState(() => localStorage.getItem('converterInput') || '');
+  const [activeConverter, setActiveConverter] = useState<ConverterType | null>(() => {
+    return (localStorage.getItem('activeConverter') as ConverterType) || null;
+  });
   const [messages, setMessages] = useState<Message[]>(() => {
-    return JSON.parse(localStorage.getItem('messages') || '[]');
+    try {
+      return JSON.parse(localStorage.getItem('allMessages') || '[]');
+    } catch {
+      return [];
+    }
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -186,7 +200,13 @@ function App() {
   const latestMessageRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [dummyChats, setDummyChats] = useState<Chat[]>(initialDummyChats);
+  const [dummyChats, setDummyChats] = useState<Chat[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('allChats') || JSON.stringify(initialDummyChats));
+    } catch {
+      return initialDummyChats;
+    }
+  });
 
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [outputFormat, setOutputFormat] = useState('text');
@@ -209,7 +229,6 @@ function App() {
   const [error, setError] = useState('');
 
   const [showConverter, setShowConverter] = useState(false);
-  const [activeConverter, setActiveConverter] = useState<ConverterType | null>(null);
   const converterRef = useRef<HTMLDivElement>(null);
 
   // Add this state near your other states
@@ -223,6 +242,9 @@ function App() {
   
   const [authEmail, setAuthEmail] = useState('');
   const [localUser, setLocalUser] = useState<LocalUser | null>(null);
+
+  // Add this state near your other states
+  const [loadingStates, setLoadingStates] = useState<LoadingState[]>([]);
 
   useEffect(() => {
     const filtered = dummyChats.filter(chat => 
@@ -360,57 +382,176 @@ function App() {
     }
   }, []);
 
-  // Update the handleSubmit function to handle different converter types
+  // Add these effects near your other useEffects
+  useEffect(() => {
+    // Load all saved data when component mounts
+    const savedData = {
+      messages: localStorage.getItem('messages'),
+      chats: localStorage.getItem('chats'),
+      activeChat: localStorage.getItem('activeChat'),
+      activeConverter: localStorage.getItem('activeConverter'),
+      converterMessages: localStorage.getItem('converterMessages'),
+      userData: localStorage.getItem('userData'),
+    };
+
+    if (savedData.messages) setMessages(JSON.parse(savedData.messages));
+    if (savedData.chats) setDummyChats(JSON.parse(savedData.chats));
+    if (savedData.activeChat) setActiveChat(savedData.activeChat);
+    if (savedData.activeConverter) setActiveConverter(savedData.activeConverter as ConverterType);
+    if (savedData.userData) setUser(JSON.parse(savedData.userData));
+  }, []);
+
+  // Add these effects to persist data
+  useEffect(() => {
+    localStorage.setItem('currentInput', input);
+  }, [input]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem('allMessages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (dummyChats.length > 0) {
+      localStorage.setItem('allChats', JSON.stringify(dummyChats));
+    }
+  }, [dummyChats]);
+
+  // Add these effects to save data on changes
+  useEffect(() => {
+    // Save input drafts
+    localStorage.setItem('draftInput', input);
+  }, [input]);
+
+  useEffect(() => {
+    // Save converter input
+    localStorage.setItem('converterInput', converterInput);
+  }, [converterInput]);
+
+  useEffect(() => {
+    // Load chat history and messages for active chat
+    const savedActiveChat = localStorage.getItem('activeChat');
+    if (savedActiveChat) {
+      const chatMessages = localStorage.getItem(`chat_${savedActiveChat}`);
+      if (chatMessages) {
+        setMessages(JSON.parse(chatMessages));
+        setActiveChat(savedActiveChat);
+      }
+    }
+  }, []);
+
+  // Add these effects to save data on changes
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem('messages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (dummyChats.length > 0) {
+      localStorage.setItem('chats', JSON.stringify(dummyChats));
+    }
+  }, [dummyChats]);
+
+  useEffect(() => {
+    if (activeConverter) {
+      localStorage.setItem('activeConverter', activeConverter);
+    }
+  }, [activeConverter]);
+
+  useEffect(() => {
+    if (activeChat) {
+      localStorage.setItem('activeChat', activeChat);
+    }
+  }, [activeChat]);
+
+  // Update the handleSubmit function
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
+  
+  if (!isAuthenticated) {
+    setShowAuthModal(true);
+    return;
+  }
+
   if (!input.trim()) return;
 
-  // Get current converter cost if active
-  const currentConverter = CONVERTER_CONTENT.find(c => c.id === activeConverter);
-  const cost = currentConverter?.cost || 0;
-
-  // Include selected options in the message
-  const newMessage: Message = {
-    id: Date.now().toString(),
-    type: activeConverter ? activeConverter.split('-')[2] as 'text' | 'image' | 'video' : 'text',
-    content: input,
-    options: {
-      format: outputFormat,
-      summaryType,
-      theme,
-      audioVoice,
-      language,
-      audience
-    }
+  // Add user's message immediately
+  const userMessageId = Date.now().toString();
+  const userMessage: Message = {
+    id: userMessageId,
+    type: 'text',
+    content: input
   };
+  setMessages(prev => [...prev, userMessage]);
 
-  const updatedMessages = [...messages, newMessage];
-  setMessages(updatedMessages);
-  
-  const newChat: Chat = {
-    id: Date.now().toString(),
-    title: currentConverter ? `${currentConverter.title}: ${input.slice(0, 20)}...` : input.slice(0, 30) + (input.length > 30 ? '...' : ''),
-    preview: input,
-    date: new Date().toLocaleTimeString()
-  };
-  
-  setDummyChats(prev => [newChat, ...prev]);
-  setActiveChat(newChat.id);
-  localStorage.setItem(`chat_${newChat.id}`, JSON.stringify(updatedMessages));
-  setInput('');
-  
-  setIsGenerating(true);
+  // Add loading state for AI response with a slight delay
+  const aiResponseId = (Date.now() + 1).toString();
   setTimeout(() => {
-    const aiResponse: Message = {
-      id: (Date.now() + 1).toString(),
-      type: currentConverter ? currentConverter.id.split('-')[2] as 'image' | 'video' : 'text',
-      content: 'https://images.unsplash.com/photo-1682687220742-aba19b51f9a8',
-    };
-    setMessages(prev => [...prev, aiResponse]);
-    setIsGenerating(false);
-  }, 2000);
+    setLoadingStates(prev => [...prev, { 
+      id: aiResponseId, 
+      type: 'text' 
+    }]);
+  }, 200); // Small delay to show user message first
 
+  // Clear input and collapse expanded box
+  setInput('');
   setIsInputExpanded(false);
+
+  // Simulate API delay and add dummy response
+  setTimeout(() => {
+    // Remove loading state
+    setLoadingStates(prev => prev.filter(state => state.id !== aiResponseId));
+
+    // Add AI response
+    const aiResponse: Message = {
+      id: aiResponseId,
+      type: 'text',
+      content: `Here's a summary of your text:\n\nKey Points:\n• ${input.slice(0, 50)}...\n• The text contains approximately ${input.split(' ').length} words\n• Main theme appears to be ${input.split(' ').slice(0, 3).join(' ')}...\n\nSummary:\n${input.slice(0, 100)}...\n\nAdditional Insights:\n• Consider expanding on the key concepts\n• The tone appears to be informative\n• Recommended reading time: ${Math.ceil(input.split(' ').length / 200)} minutes`
+    };
+
+    setMessages(prev => [...prev, aiResponse]);
+
+    // Update chat list and storage
+    const chatId = activeChat || userMessageId;
+    const updatedMessages = [...messages, userMessage, aiResponse];
+    localStorage.setItem(`chat_${chatId}`, JSON.stringify(updatedMessages));
+
+    if (!activeChat) {
+      const newChat: Chat = {
+        id: chatId,
+        title: input.slice(0, 30) + (input.length > 30 ? '...' : ''),
+        preview: input,
+        date: new Date().toLocaleTimeString()
+      };
+      
+      const updatedChats = [newChat, ...dummyChats];
+      setDummyChats(updatedChats);
+      localStorage.setItem('allChats', JSON.stringify(updatedChats));
+      setActiveChat(chatId);
+    }
+  }, 2000); // Keep the 2-second delay for the response
+};
+
+// Update handleNewChat function
+const handleNewChat = () => {
+  setMessages([]);
+  setInput('');
+  setActiveChat(null);
+  setActiveConverter(null);
+  setIsSidebarOpen(false);
+  setIsInputExpanded(false);
+};
+
+// Update handleChatSelect function
+const handleChatSelect = (chatId: string) => {
+  const chatMessages = localStorage.getItem(`chat_${chatId}`);
+  if (chatMessages) {
+    setMessages(JSON.parse(chatMessages));
+    setActiveChat(chatId);
+    setIsSidebarOpen(false);
+  }
 };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
@@ -451,48 +592,62 @@ const handleSubmit = async (e: React.FormEvent) => {
     console.error('Google login failed');
   };
 
+  // Update handleLogout to clear all data
   const handleLogout = () => {
     localStorage.removeItem('localUser');
+    localStorage.removeItem('messages');
+    localStorage.removeItem('chats');
+    localStorage.removeItem('activeChat');
+    localStorage.removeItem('activeConverter');
+    localStorage.removeItem('draftInput');
+    localStorage.removeItem('converterInput');
+    localStorage.removeItem('userData');
+    localStorage.removeItem('currentInput');
+    localStorage.removeItem('allMessages');
+    localStorage.removeItem('allChats');
+    
     setLocalUser(null);
+    setUser(null);
     setIsAuthenticated(false);
     setMessages([]);
+    setDummyChats([]);
+    setActiveChat(null);
+    setActiveConverter(null);
+    setInput('');
   };
 
   // Add local auth functions
+  // Update handleEmailLogin to store complete user data
   const handleEmailLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail) return;
   
-    // Create user object similar to Google OAuth format
-    const user = {
+    const userData = {
       id: Date.now().toString(),
       email: authEmail,
-      username: authEmail.split('@')[0], // Extract username from email
+      username: authEmail.split('@')[0],
       createdAt: new Date()
     };
   
-    const localUser: LocalUser = {
+    // Store all user data
+    localStorage.setItem('userData', JSON.stringify(userData));
+    localStorage.setItem('localUser', JSON.stringify({
       email: authEmail,
       createdAt: new Date().toISOString()
-    };
+    }));
   
-    // Store both user and localUser data
-    localStorage.setItem('localUser', JSON.stringify(localUser));
-    setLocalUser(localUser);
-    setUser(user); // Set user state for profile display
+    setUser(userData);
+    setLocalUser({ email: authEmail, createdAt: new Date().toISOString() });
     setIsAuthenticated(true);
     setShowAuthModal(false);
     setAuthEmail('');
+  
+    // Initialize with dummy chats for new users
+    if (!localStorage.getItem('chats')) {
+      localStorage.setItem('chats', JSON.stringify(initialDummyChats));
+      setDummyChats(initialDummyChats);
+    }
   };
-
-  // Update the handleNewChat function
-const handleNewChat = () => {
-  setMessages([]);
-  setInput('');
-  setIsSidebarOpen(false);
-  setIsInputExpanded(false);
-  setActiveConverter(null); // Reset active converter
-};
 
   const handleSidebarHover = () => {
     if (!isSidebarOpen) {
@@ -517,17 +672,6 @@ const handleNewChat = () => {
     
     // Update filtered chats
     setFilteredChats(prev => prev.filter(chat => chat.id !== chatId));
-  };
-
-  const handleChatSelect = (chatId: string) => {
-    setActiveChat(chatId);
-    const selectedChat = dummyChats.find(chat => chat.id === chatId);
-    if (selectedChat) {
-      // Assuming you want to load the chat messages
-      const chatMessages = JSON.parse(localStorage.getItem(`chat_${chatId}`) || '[]');
-      setMessages(chatMessages);
-      setIsSidebarOpen(false);
-    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1005,35 +1149,40 @@ const handleNewChat = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="text-center space-y-8 max-w-4xl mx-auto"
               >
-                <h1 className="text-5xl font-bold mb-6 leading-tight">
-                  Bring Your{' '}
-                  <span className="inline-block animate-gradient bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-                    Imagination
+                <h1 className="text-[2.75rem] sm:text-5xl font-bold mb-6 leading-tight whitespace-nowrap">
+                  <span className="inline-block animate-gradient bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent">
+                    Summarize
                   </span>{' '}
-                  to Life with{' '}
+                  Your Text{' '}
+                  <span className="inline-block animate-gradient bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                    Seamlessly
+                  </span>{' '}
+                  with{' '}
                   <span className="inline-block animate-gradient bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 bg-clip-text text-transparent">
                     AI
                   </span>!
                 </h1>
                 <p className={clsx(
-                  "text-base sm:text-xl font-medium leading-relaxed max-w-[320px] sm:max-w-2xl mx-auto", // Increased mobile max-width
+                  "text-base sm:text-xl font-medium leading-relaxed max-w-[320px] sm:max-w-2xl mx-auto",
                   darkMode ? "text-gray-300" : "text-gray-700"
                 )}>
-                  Transform{' '}
-                  <span className="text-blue-500">text</span>,{' '}
-                  <span className="text-purple-500">docs</span>, or{' '} {/* Shortened words */}
-                  <span className="text-blue-500">PDFs</span>{' '}
-                  into stunning <span className="text-pink-500">images & videos</span> effortlessly.
+                  Our Text{' '}
+                  <span className="text-blue-500">Summarizer</span>{' '}
+                  transforms{' '}
+                  <span className="text-purple-500">lengthy documents</span>,{' '}
+                  <span className="text-pink-500">PDFs</span>,{' '}
+                  <span className="text-blue-500">PPTs</span>, and{' '}
+                  <span className="text-purple-500">eBooks</span>{' '}
+                  into concise, meaningful insights.
                 </p>
                 <p className={clsx(
-                  "text-sm sm:text-lg max-w-[240px] sm:max-w-xl mx-auto", // Added mobile-first sizing
+                  "text-sm sm:text-lg max-w-[240px] sm:max-w-xl mx-auto",
                   darkMode ? "text-gray-400" : "text-gray-600"
                 )}>
-                  Discover the power of{' '}
+                  Save time,{' '}
                   <span className="font-semibold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-                    AI-driven creativity
-                  </span>{' '}
-                  at your fingertips.
+                    gain clarity
+                  </span>!
                 </p>
               </motion.div>
             ) : activeConverter ? (
@@ -1109,7 +1258,79 @@ const handleNewChat = () => {
                       message.loading && 'animate-pulse'
                     )}
                   >
-                    {message.type === 'text' && (
+                    {/* Text Skeleton */}
+                    {loadingStates.find(state => state.id === message.id && state.type === 'text') ? (
+                      <div className={clsx(
+                        'p-6 rounded-xl max-w-prose', // Increased padding
+                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
+                        'backdrop-blur-sm space-y-3' // Increased space between lines
+                      )}>
+                        {/* First paragraph */}
+                        <div className="space-y-2">
+                          <div className="h-5 bg-gray-400/20 rounded-full w-2/3 animate-pulse"></div>
+                          <div className="h-5 bg-gray-400/20 rounded-full w-full animate-pulse"></div>
+                          <div className="h-5 bg-gray-400/20 rounded-full w-4/5 animate-pulse"></div>
+                        </div>
+                        
+                        {/* Second paragraph */}
+                        <div className="space-y-2">
+                          <div className="h-5 bg-gray-400/20 rounded-full w-3/4 animate-pulse"></div>
+                          <div className="h-5 bg-gray-400/20 rounded-full w-full animate-pulse"></div>
+                          <div className="h-5 bg-gray-400/20 rounded-full w-2/3 animate-pulse"></div>
+                        </div>
+                    
+                        {/* Key points section */}
+                        <div className="space-y-2 pt-2">
+                          <div className="h-4 bg-gray-400/20 rounded-full w-1/4 animate-pulse"></div>
+                          <div className="h-4 bg-gray-400/20 rounded-full w-1/2 animate-pulse"></div>
+                          <div className="h-4 bg-gray-400/20 rounded-full w-1/3 animate-pulse"></div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Image/Video/Sign Skeleton */}
+                    {loadingStates.find(state => state.id === message.id && ['image', 'video', 'sign'].includes(state.type)) ? (
+                      <div className={clsx(
+                        'rounded-xl overflow-hidden',
+                        'w-full max-w-lg aspect-video',
+                        'relative'
+                      )}>
+                        <div className="absolute inset-0 bg-gradient-to-r from-gray-400/20 via-gray-300/20 to-gray-400/20 animate-gradient-x"></div>
+                        <div className={clsx(
+                          'absolute inset-0 flex items-center justify-center',
+                          darkMode ? 'text-gray-600' : 'text-gray-400'
+                        )}>
+                          {state.type === 'image' && <Image className="w-8 h-8" />}
+                          {state.type === 'video' && <Video className="w-8 h-8" />}
+                          {state.type === 'sign' && <Fingerprint className="w-8 h-8" />}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Audio Skeleton */}
+                    {loadingStates.find(state => state.id === message.id && state.type === 'audio') ? (
+                      <div className={clsx(
+                        'rounded-xl p-4 max-w-lg',
+                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
+                        'backdrop-blur-sm'
+                      )}>
+                        <div className="h-12 flex items-center gap-1">
+                          {[...Array(30)].map((_, i) => (
+                            <div 
+                              key={i}
+                              className="w-1 bg-blue-500/50 rounded-full animate-sound-wave"
+                              style={{ 
+                                height: `${Math.random() * 100}%`,
+                                animationDelay: `${i * 0.05}s`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Regular Message Content */}
+                    {message.type === 'text' && !loadingStates.find(state => state.id === message.id) && (
                       <div className={clsx(
                         'p-4 rounded-xl max-w-prose',
                         darkMode ? 'bg-gray-800/50' : 'bg-white/50',
@@ -1296,7 +1517,13 @@ const handleNewChat = () => {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onFocus={() => setIsInputExpanded(true)}
-                  placeholder={uploadedFile ? "Add additional instructions..." : "Describe what you want to create..."}
+                  placeholder={
+                    !isAuthenticated 
+                      ? "Sign in to start creating..." 
+                      : uploadedFile 
+                        ? "Add additional instructions..." 
+                        : "Describe what you want to create..."
+                  }
                   className={clsx(
                     'w-full p-3 outline-none transition-all duration-500 ease-in-out',
                     darkMode 
