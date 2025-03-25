@@ -75,12 +75,13 @@ type Message = {
   content: string;
   loading?: boolean;
   options?: {
-    format: string;
-    summaryType: string;
-    theme: string;
-    audioVoice: string;
-    language: string;
-    audience: string; // Add this line
+    format?: string;
+    summaryType?: string;
+    theme?: string;
+    audioVoice?: string;
+    language?: string;
+    audience?: string;
+    file?: string;  // Make file optional
   };
 };
 
@@ -177,15 +178,10 @@ function App() {
   
   const [input, setInput] = useState(() => localStorage.getItem('currentInput') || '');
   const [converterInput, setConverterInput] = useState(() => localStorage.getItem('converterInput') || '');
-  const [activeConverter, setActiveConverter] = useState<ConverterType | null>(() => {
-    return (localStorage.getItem('activeConverter') as ConverterType) || null;
-  });
+  const [activeConverter, setActiveConverter] = useState<ConverterType | null>(null);
   const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('allMessages') || '[]');
-    } catch {
-      return [];
-    }
+    const savedMessages = localStorage.getItem('messages');
+    return savedMessages ? JSON.parse(savedMessages) : [];
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -245,6 +241,13 @@ function App() {
 
   // Add this state near your other states
   const [loadingStates, setLoadingStates] = useState<LoadingState[]>([]);
+
+  // Add these new state variables near the top of your component
+  const [summaryOptions, setSummaryOptions] = useState({
+    summaryType: 'brief', // 'brief', 'detailed', 'deep-dive'
+    format: 'bullet', // 'bullet', 'paragraph', 'structured'
+    tone: 'neutral', // 'neutral', 'formal', 'casual'
+  });
 
   useEffect(() => {
     const filtered = dummyChats.filter(chat => 
@@ -466,7 +469,36 @@ function App() {
     }
   }, [activeChat]);
 
-  // Update the handleSubmit function
+  // Add this skeleton component first
+const SummaryOutputSkeleton = ({ darkMode }: { darkMode: boolean }) => (
+  <div className={clsx(
+    'p-6 rounded-xl max-w-prose',
+    darkMode ? 'bg-gray-800/50' : 'bg-white/50',
+    'backdrop-blur-sm space-y-4'
+  )}>
+    {/* Summary Title */}
+    <div className="h-6 bg-gray-400/20 rounded-full w-3/4 animate-pulse" />
+    
+    {/* Main Summary */}
+    <div className="space-y-2 py-2">
+      <div className="h-5 bg-gray-400/20 rounded-full w-full animate-pulse" />
+      <div className="h-5 bg-gray-400/20 rounded-full w-5/6 animate-pulse" />
+      <div className="h-5 bg-gray-400/20 rounded-full w-4/5 animate-pulse" />
+    </div>
+
+    {/* Key Points Section */}
+    <div>
+      <div className="h-6 bg-gray-400/20 rounded-full w-1/4 animate-pulse mb-2" />
+      <div className="space-y-2">
+        <div className="h-5 bg-gray-400/20 rounded-full w-2/5 animate-pulse" />
+        <div className="h-5 bg-gray-400/20 rounded-full w-1/2 animate-pulse" />
+        <div className="h-5 bg-gray-400/20 rounded-full w-3/5 animate-pulse" />
+      </div>
+    </div>
+  </div>
+);
+
+// First, update the handleSubmit function to properly manage loading states
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   
@@ -475,63 +507,52 @@ const handleSubmit = async (e: React.FormEvent) => {
     return;
   }
 
-  if (!input.trim()) return;
+  if (!input.trim() && !uploadedFile) return;
 
-  // Add user's message immediately
-  const userMessageId = Date.now().toString();
+  // Add user message
   const userMessage: Message = {
-    id: userMessageId,
+    id: Date.now().toString(),
     type: 'text',
-    content: input
+    content: input,
+    options: summaryOptions
   };
-  setMessages(prev => [...prev, userMessage]);
 
-  // Add loading state for AI response with a slight delay
-  const aiResponseId = (Date.now() + 1).toString();
-  setTimeout(() => {
-    setLoadingStates(prev => [...prev, { 
-      id: aiResponseId, 
-      type: 'text' 
-    }]);
-  }, 200); // Small delay to show user message first
+  // Generate AI response ID
+  const aiMessageId = (Date.now() + 1).toString();
 
-  // Clear input and collapse expanded box
+  // Clear input and collapse input box
   setInput('');
   setIsInputExpanded(false);
 
-  // Simulate API delay and add dummy response
-  setTimeout(() => {
+  // Add user message to chat
+  setMessages(prev => [...prev, userMessage]);
+
+  // Add loading state
+  setLoadingStates(prev => [...prev, { 
+    id: aiMessageId, 
+    type: 'text' 
+  }]);
+
+  try {
+    // Simulate API call (replace with actual API call later)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     // Remove loading state
-    setLoadingStates(prev => prev.filter(state => state.id !== aiResponseId));
+    setLoadingStates(prev => prev.filter(state => state.id !== aiMessageId));
 
     // Add AI response
     const aiResponse: Message = {
-      id: aiResponseId,
+      id: aiMessageId,
       type: 'text',
-      content: `Here's a summary of your text:\n\nKey Points:\n• ${input.slice(0, 50)}...\n• The text contains approximately ${input.split(' ').length} words\n• Main theme appears to be ${input.split(' ').slice(0, 3).join(' ')}...\n\nSummary:\n${input.slice(0, 100)}...\n\nAdditional Insights:\n• Consider expanding on the key concepts\n• The tone appears to be informative\n• Recommended reading time: ${Math.ceil(input.split(' ').length / 200)} minutes`
+      content: generateSummaryResponse(input, summaryOptions),
+      options: summaryOptions
     };
 
     setMessages(prev => [...prev, aiResponse]);
-
-    // Update chat list and storage
-    const chatId = activeChat || userMessageId;
-    const updatedMessages = [...messages, userMessage, aiResponse];
-    localStorage.setItem(`chat_${chatId}`, JSON.stringify(updatedMessages));
-
-    if (!activeChat) {
-      const newChat: Chat = {
-        id: chatId,
-        title: input.slice(0, 30) + (input.length > 30 ? '...' : ''),
-        preview: input,
-        date: new Date().toLocaleTimeString()
-      };
-      
-      const updatedChats = [newChat, ...dummyChats];
-      setDummyChats(updatedChats);
-      localStorage.setItem('allChats', JSON.stringify(updatedChats));
-      setActiveChat(chatId);
-    }
-  }, 2000); // Keep the 2-second delay for the response
+  } catch (error) {
+    console.error('Error:', error);
+    setLoadingStates(prev => prev.filter(state => state.id !== aiMessageId));
+  }
 };
 
 // Update handleNewChat function
@@ -542,6 +563,8 @@ const handleNewChat = () => {
   setActiveConverter(null);
   setIsSidebarOpen(false);
   setIsInputExpanded(false);
+  localStorage.removeItem('currentSection');
+  localStorage.removeItem('activeConverter');
 };
 
 // Update handleChatSelect function
@@ -578,6 +601,7 @@ const handleChatSelect = (chatId: string) => {
       setIsAuthenticated(true);
       setShowAuthModal(false);
       setError('');
+      handleNewChat(); // Add this line to reset to welcome page
   
       // Optional: Store auth token in localStorage
       localStorage.setItem('authToken', credentialResponse.credential);
@@ -641,6 +665,7 @@ const handleChatSelect = (chatId: string) => {
     setIsAuthenticated(true);
     setShowAuthModal(false);
     setAuthEmail('');
+    handleNewChat(); // Add this line to reset to welcome page
   
     // Initialize with dummy chats for new users
     if (!localStorage.getItem('chats')) {
@@ -689,6 +714,22 @@ const handleChatSelect = (chatId: string) => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const generateSummaryResponse = (text: string, options: typeof summaryOptions) => {
+    const wordCount = text.split(' ').length;
+    const summary = `${options.format === 'bullet' ? '• ' : ''}${text.slice(0, 100)}...`;
+    
+    return `Summary (${options.summaryType}, ${options.tone} tone):
+  
+  ${summary}
+  
+  Key Points:
+  • Word count: ${wordCount}
+  • Reading time: ${Math.ceil(wordCount / 200)} minutes
+  • Main theme: ${text.split(' ').slice(0, 3).join(' ')}...
+  
+  ${options.format === 'structured' ? 'Additional Insights:\n• Context\n• Analysis\n• Recommendations' : ''}`;
   };
 
   return (
@@ -1253,128 +1294,22 @@ const handleChatSelect = (chatId: string) => {
                   <div
                     key={message.id}
                     ref={messages[messages.length - 1].id === message.id ? latestMessageRef : null}
-                    className={clsx(
-                      'flex flex-col gap-2',
-                      message.loading && 'animate-pulse'
-                    )}
+                    className="flex flex-col gap-2"
                   >
-                    {/* Text Skeleton */}
-                    {loadingStates.find(state => state.id === message.id && state.type === 'text') ? (
-                      <div className={clsx(
-                        'p-6 rounded-xl max-w-prose', // Increased padding
-                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
-                        'backdrop-blur-sm space-y-3' // Increased space between lines
-                      )}>
-                        {/* First paragraph */}
-                        <div className="space-y-2">
-                          <div className="h-5 bg-gray-400/20 rounded-full w-2/3 animate-pulse"></div>
-                          <div className="h-5 bg-gray-400/20 rounded-full w-full animate-pulse"></div>
-                          <div className="h-5 bg-gray-400/20 rounded-full w-4/5 animate-pulse"></div>
-                        </div>
-                        
-                        {/* Second paragraph */}
-                        <div className="space-y-2">
-                          <div className="h-5 bg-gray-400/20 rounded-full w-3/4 animate-pulse"></div>
-                          <div className="h-5 bg-gray-400/20 rounded-full w-full animate-pulse"></div>
-                          <div className="h-5 bg-gray-400/20 rounded-full w-2/3 animate-pulse"></div>
-                        </div>
-                    
-                        {/* Key points section */}
-                        <div className="space-y-2 pt-2">
-                          <div className="h-4 bg-gray-400/20 rounded-full w-1/4 animate-pulse"></div>
-                          <div className="h-4 bg-gray-400/20 rounded-full w-1/2 animate-pulse"></div>
-                          <div className="h-4 bg-gray-400/20 rounded-full w-1/3 animate-pulse"></div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Image/Video/Sign Skeleton */}
-                    {loadingStates.find(state => state.id === message.id && ['image', 'video', 'sign'].includes(state.type)) ? (
-                      <div className={clsx(
-                        'rounded-xl overflow-hidden',
-                        'w-full max-w-lg aspect-video',
-                        'relative'
-                      )}>
-                        <div className="absolute inset-0 bg-gradient-to-r from-gray-400/20 via-gray-300/20 to-gray-400/20 animate-gradient-x"></div>
+                    {/* Show skeleton for loading state */}
+                    {loadingStates.some(state => state.id === message.id) ? (
+                      <SummaryOutputSkeleton darkMode={darkMode} />
+                    ) : (
+                      /* Regular Message Content */
+                      message.type === 'text' && (
                         <div className={clsx(
-                          'absolute inset-0 flex items-center justify-center',
-                          darkMode ? 'text-gray-600' : 'text-gray-400'
+                          'p-4 rounded-xl max-w-prose',
+                          darkMode ? 'bg-gray-800/50' : 'bg-white/50',
+                          'backdrop-blur-sm'
                         )}>
-                          {state.type === 'image' && <Image className="w-8 h-8" />}
-                          {state.type === 'video' && <Video className="w-8 h-8" />}
-                          {state.type === 'sign' && <Fingerprint className="w-8 h-8" />}
+                          <p className="whitespace-pre-wrap">{message.content}</p>
                         </div>
-                      </div>
-                    ) : null}
-
-                    {/* Audio Skeleton */}
-                    {loadingStates.find(state => state.id === message.id && state.type === 'audio') ? (
-                      <div className={clsx(
-                        'rounded-xl p-4 max-w-lg',
-                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
-                        'backdrop-blur-sm'
-                      )}>
-                        <div className="h-12 flex items-center gap-1">
-                          {[...Array(30)].map((_, i) => (
-                            <div 
-                              key={i}
-                              className="w-1 bg-blue-500/50 rounded-full animate-sound-wave"
-                              style={{ 
-                                height: `${Math.random() * 100}%`,
-                                animationDelay: `${i * 0.05}s`
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Regular Message Content */}
-                    {message.type === 'text' && !loadingStates.find(state => state.id === message.id) && (
-                      <div className={clsx(
-                        'p-4 rounded-xl max-w-prose',
-                        darkMode ? 'bg-gray-800/50' : 'bg-white/50',
-                        'backdrop-blur-sm'
-                      )}>
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                      </div>
-                    )}
-                    {message.type === 'image' && (
-                      <div className={clsx(
-                        'rounded-xl overflow-hidden max-w-lg',
-                        'backdrop-blur-sm'
-                      )}>
-                        <img 
-                          src={message.content} 
-                          alt="Generated" 
-                          className="w-full h-auto"
-                        />
-                      </div>
-                    )}
-                    {message.type === 'video' && (
-                      <div className={clsx(
-                        'rounded-xl overflow-hidden max-w-lg',
-                        'backdrop-blur-sm'
-                      )}>
-                        <video 
-                          src={message.content}
-                          controls
-                          className="w-full h-auto"
-                        />
-                      </div>
-                    )}
-                    {message.type === 'audio' && (
-                      <div className={clsx(
-                        'rounded-xl overflow-hidden max-w-lg',
-                        'backdrop-blur-sm p-4',
-                        darkMode ? 'bg-gray-800/50' : 'bg-white/50'
-                      )}>
-                        <audio 
-                          src={message.content}
-                          controls
-                          className="w-full"
-                        />
-                      </div>
+                      )
                     )}
                   </div>
                 ))}
@@ -1399,9 +1334,9 @@ const handleChatSelect = (chatId: string) => {
               : 'max-w-2xl',
             !isInputExpanded && 'bg-transparent'
           )}>
-            {isInputExpanded && (
+            {isInputExpanded && !activeConverter && (
               <div className="space-y-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Summary Type</label>
                     <div className="flex flex-wrap gap-2">
@@ -1409,14 +1344,17 @@ const handleChatSelect = (chatId: string) => {
                         <button
                           key={type}
                           type="button"
-                          onClick={() => setSummaryType(type.toLowerCase())}
+                          onClick={() => setSummaryOptions(prev => ({
+                            ...prev,
+                            summaryType: type.toLowerCase()
+                          }))}
                           className={clsx(
-                            'px-3 py-1 rounded-full text-sm',
-                            summaryType === type.toLowerCase()
+                            'px-3 py-1.5 rounded-full text-sm transition-colors',
+                            summaryOptions.summaryType === type.toLowerCase()
                               ? 'bg-blue-500 text-white'
                               : darkMode 
                                 ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                : 'bg-gray-200 hover:bg-gray-300'
                           )}
                         >
                           {type}
@@ -1426,46 +1364,52 @@ const handleChatSelect = (chatId: string) => {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Theme</label>
+                    <label className="text-sm font-medium">Format</label>
                     <div className="flex flex-wrap gap-2">
-                      {['Story', 'Podcast', 'Education', 'Entertainment'].map(t => (
+                      {['Bullet', 'Paragraph', 'Structured'].map(format => (
                         <button
-                          key={t}
+                          key={format}
                           type="button"
-                          onClick={() => setTheme(t.toLowerCase())}
+                          onClick={() => setSummaryOptions(prev => ({
+                            ...prev,
+                            format: format.toLowerCase()
+                          }))}
                           className={clsx(
-                            'px-3 py-1 rounded-full text-sm',
-                            theme === t.toLowerCase()
+                            'px-3 py-1.5 rounded-full text-sm transition-colors',
+                            summaryOptions.format === format.toLowerCase()
                               ? 'bg-blue-500 text-white'
                               : darkMode 
                                 ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                : 'bg-gray-200 hover:bg-gray-300'
                           )}
                         >
-                          {t}
+                          {format}
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Audience</label>
+                    <label className="text-sm font-medium">Tone</label>
                     <div className="flex flex-wrap gap-2">
-                      {['Children', 'Teenager', 'Adult', 'Senior'].map(aud => (
+                      {['Neutral', 'Formal', 'Casual'].map(tone => (
                         <button
-                          key={aud}
+                          key={tone}
                           type="button"
-                          onClick={() => setAudience(aud.toLowerCase())}
+                          onClick={() => setSummaryOptions(prev => ({
+                            ...prev,
+                            tone: tone.toLowerCase()
+                          }))}
                           className={clsx(
-                            'px-3 py-1 rounded-full text-sm',
-                            audience === aud.toLowerCase()
+                            'px-3 py-1.5 rounded-full text-sm transition-colors',
+                            summaryOptions.tone === tone.toLowerCase()
                               ? 'bg-blue-500 text-white'
                               : darkMode 
                                 ? 'bg-gray-700 hover:bg-gray-600' 
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                : 'bg-gray-200 hover:bg-gray-300'
                           )}
                         >
-                          {aud}
+                          {tone}
                         </button>
                       ))}
                     </div>
@@ -1690,3 +1634,5 @@ const handleChatSelect = (chatId: string) => {
 }
 
 export default App;
+
+
