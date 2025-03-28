@@ -10,8 +10,7 @@ interface ExtendedJwtPayload extends JwtPayload {
 import { 
   Sun, Moon, Upload, Send, Image, Video, Loader2, Menu, Search, 
   LogOut, Settings, HelpCircle, PlusCircle, ChevronRight, ChevronLeft,
-  Crown, MessageSquare, User, ChevronDown, FileText, Music, Fingerprint,
-  ArrowRight // Add this
+  Crown, MessageSquare, User, ChevronDown, FileText, Music, Fingerprint, ArrowRight // Add this
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { BackgroundLines } from './components/BackgroundLines';
